@@ -1,0 +1,11 @@
+[Unit]
+Description=3G watchdog
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/3g-watchdog usbreset
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
