@@ -4,9 +4,14 @@ import argparse
 import contextlib
 import fcntl
 import os
-import sys
 import subprocess
 import time
+
+# Note: USBDEVFS_RESET doesn't appear to work, reboot does.
+#
+# Other actions to try:
+# - IOCTL_USB_RESET as per https://stackoverflow.com/questions/30437015/usbdevfs-reset-vs-ioctl-usb-reset
+# - Reload the cdc_ether driver
 
 
 MODEM_NETDEV = 'usb0'
