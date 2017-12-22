@@ -1,0 +1,77 @@
+#!/usr/bin/python3 -u
+
+import contextlib
+import subprocess
+import time
+
+
+MODEM_NETDEV = 'usb0'
+
+TEST_HOSTS = [
+    "8.8.8.8",
+    "8.8.4.4",
+    ]
+TEST_INTERVAL_SECS = 300  # 5 mins
+
+
+def main():
+    print("running")
+
+    with contextlib.suppress(KeyboardInterrupt):
+        while True:
+            time.sleep(TEST_INTERVAL_SECS)
+
+            if is_default_route_via_dev(MODEM_NETDEV):
+                print("link is using USB modem")
+                if ping_hosts(TEST_HOSTS):
+                    print("link ok")
+                else:
+                    print("link NOT ok")
+                    reboot()
+            else:
+                print("link is not using USB modem")
+
+
+def is_default_route_via_dev(netdev):
+    output = subprocess.check_output(["ip", "route"], universal_newlines=True)
+    search = ' dev ' + netdev + ' '
+    for line in output.splitlines():
+        if line.startswith("default") and search in line:
+            return True
+    return False
+
+
+def ping_hosts(addrs):
+    # Try a number of times to allow for flaky connections. We want to
+    # be really sure the link is down before taking action.
+    for _ in range(5):
+        for addr in addrs:
+            if ping_host(addr):
+                return True
+    return False
+
+
+def ping_host(addr):
+    try:
+        subprocess.check_call(
+            [
+                'ping',
+                '-n', '-q',    # no DNS, quiet output
+                '-c', '1',     # just need one response
+                '-w', '30',    # wait up to 30s
+                addr,
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError:
+        return False
+    return True
+
+
+def reboot():
+    print('rebooting system')
+    subprocess.check_call(["/sbin/reboot"])
+
+
+if __name__ == '__main__':
+    main()
