@@ -1,21 +1,11 @@
 #!/usr/bin/python3 -u
 
-import argparse
 import contextlib
-import fcntl
-import os
 import subprocess
 import time
 
-# Note: USBDEVFS_RESET doesn't appear to work, reboot does.
-#
-# Other actions to try:
-# - IOCTL_USB_RESET as per https://stackoverflow.com/questions/30437015/usbdevfs-reset-vs-ioctl-usb-reset
-# - Reload the cdc_ether driver
-
 
 MODEM_NETDEV = 'usb0'
-MODEM_USB_VENDOR = '19d2'  # ZTE
 
 TEST_HOSTS = [
     "8.8.8.8",
@@ -25,7 +15,6 @@ TEST_INTERVAL_SECS = 300  # 5 mins
 
 
 def main():
-    args = parse_args()
     print("running")
 
     with contextlib.suppress(KeyboardInterrupt):
@@ -38,15 +27,9 @@ def main():
                     print("link ok")
                 else:
                     print("link NOT ok")
-                    run_action(args.action)
+                    reboot()
             else:
                 print("link is not using USB modem")
-
-
-def parse_args():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('action', choices=["usbreset", "reboot", "log"])
-    return parser.parse_args()
 
 
 def is_default_route_via_dev(netdev):
@@ -83,37 +66,6 @@ def ping_host(addr):
     except subprocess.CalledProcessError:
         return False
     return True
-
-
-def run_action(action):
-    if action == 'usbreset':
-        usbreset(MODEM_USB_VENDOR)
-    elif action == 'reboot':
-        reboot()
-
-
-def usbreset(vendor):
-    path = find_modem_usb_dev(vendor)
-    print('sending USB reset to ' + path)
-    usb_reset(path)
-
-
-def find_modem_usb_dev(vendor):
-    output = subprocess.check_output(["lsusb", "-d", vendor+':'], universal_newlines=True)
-    line = output.splitlines()[0].split()
-    assert line[0] == 'Bus'
-    assert line[2] == 'Device'
-    return '/dev/bus/usb/{}/{}'.format(line[1], line[3][:-1])
-
-
-USBDEVFS_RESET = ord('U') << (4*2) | 20
-
-def usb_reset(dev_path):
-    fd = os.open(dev_path, os.O_WRONLY)
-    try:
-        fcntl.ioctl(fd, USBDEVFS_RESET, 0)
-    finally:
-        os.close(fd)
 
 
 def reboot():
