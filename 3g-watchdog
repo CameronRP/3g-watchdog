@@ -23,10 +23,8 @@ def main():
 
             if is_default_route_via_dev(MODEM_NETDEV):
                 print("link is using USB modem")
-                if ping_hosts(TEST_HOSTS):
-                    print("link ok")
-                else:
-                    print("link NOT ok")
+                if not ping_hosts(TEST_HOSTS):
+                    print("ping tests FAILED, rebooting system")
                     reboot()
             else:
                 print("link is not using USB modem")
