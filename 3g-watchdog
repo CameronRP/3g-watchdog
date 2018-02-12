@@ -4,24 +4,23 @@ import contextlib
 import subprocess
 import time
 
-
 MODEM_NETDEV = 'usb0'
 
 TEST_HOSTS = [
     "8.8.8.8",
     "8.8.4.4",
-    ]
-TEST_INTERVAL_SECS = 300  # 5 mins
+]
+TEST_INTERVAL_SECS = 5 * 60
 
 
 def main():
     print("running")
 
     with contextlib.suppress(KeyboardInterrupt):
-        while True:
+        while running():
             time.sleep(TEST_INTERVAL_SECS)
 
-            if is_default_route_via_dev(MODEM_NETDEV):
+            if is_defroute_via_dev(MODEM_NETDEV):
                 print("link is using USB modem")
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED, rebooting system")
@@ -30,7 +29,12 @@ def main():
                 print("link is not using USB modem")
 
 
-def is_default_route_via_dev(netdev):
+def running():
+    "This exists to support patching during tests"
+    return True
+
+
+def is_defroute_via_dev(netdev):
     output = subprocess.check_output(["ip", "route"], universal_newlines=True)
     search = ' dev ' + netdev + ' '
     for line in output.splitlines():
@@ -54,9 +58,10 @@ def ping_host(addr):
         subprocess.check_call(
             [
                 'ping',
-                '-n', '-q',    # no DNS, quiet output
-                '-c', '1',     # just need one response
-                '-w', '30',    # wait up to 30s
+                '-n',
+                '-q',  # no DNS, quiet output
+                '-c1',  # just need one response
+                '-w30',  # wait up to 30s
                 addr,
             ],
             stdout=subprocess.DEVNULL,
