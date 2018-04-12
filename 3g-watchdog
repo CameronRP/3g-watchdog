@@ -3,7 +3,9 @@
 import contextlib
 import subprocess
 import time
+import RPi.GPIO as GPIO
 
+MODEM_PIN = 18
 MODEM_NETDEV = 'usb0'
 
 TEST_HOSTS = [
@@ -15,6 +17,10 @@ TEST_INTERVAL_SECS = 5 * 60
 
 def main():
     print("running")
+    print("turning on usb modem through PCB")
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(MODEM_PIN, GPIO.OUT)
+    GPIO.output(MODEM_PIN, GPIO.HIGH)
 
     with contextlib.suppress(KeyboardInterrupt):
         while running():
