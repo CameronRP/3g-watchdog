@@ -1,3 +1,5 @@
+#!/usr/bin/python3 -u
+
 """
 3g-watchdog - monitors 3G connectivity and takes action if it's down
 Copyright (C) 2018, The Cacophony Project
@@ -16,7 +18,7 @@ You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
     
-#!/usr/bin/python3 -u
+
 
 import contextlib
 import subprocess
