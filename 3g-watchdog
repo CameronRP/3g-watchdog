@@ -111,6 +111,7 @@ def init_modem_power():
     # Late import to simplify testing on developer machines.
     from RPi import GPIO
 
+    GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(MODEM_PIN, GPIO.OUT)
     set_modem_power(True)
