@@ -17,30 +17,31 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program. If not, see <http://www.gnu.org/licenses/>.
 """
-    
 
 
 import contextlib
 import subprocess
 import time
-import RPi.GPIO as GPIO
 
-MODEM_PIN = 18
-MODEM_NETDEV = 'usb0'
+MODEM_NETDEV = "usb0"
 
-TEST_HOSTS = [
-    "8.8.8.8",
-    "8.8.4.4",
-]
+TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
+
+ATTINY_ADDRESS = 0x04
+MODEM_PIN = 18
 
 
 def main():
     print("running")
-    print("turning on usb modem through PCB")
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(MODEM_PIN, GPIO.OUT)
-    GPIO.output(MODEM_PIN, GPIO.HIGH)
+
+    if has_new_hardware():
+        print("newer hardware detected: will reset by cycling modem power")
+        init_modem_power()
+        reset = cycle_modem_power
+    else:
+        print("older hardware detected: will reset by rebooting")
+        reset = reboot
 
     with contextlib.suppress(KeyboardInterrupt):
         while running():
@@ -49,8 +50,8 @@ def main():
             if is_defroute_via_dev(MODEM_NETDEV):
                 print("link is using USB modem")
                 if not ping_hosts(TEST_HOSTS):
-                    print("ping tests FAILED, rebooting system")
-                    reboot()
+                    print("ping tests FAILED")
+                    reset()
             else:
                 print("link is not using USB modem")
 
@@ -62,7 +63,7 @@ def running():
 
 def is_defroute_via_dev(netdev):
     output = subprocess.check_output(["ip", "route"], universal_newlines=True)
-    search = ' dev ' + netdev + ' '
+    search = " dev " + netdev + " "
     for line in output.splitlines():
         if line.startswith("default") and search in line:
             return True
@@ -83,24 +84,57 @@ def ping_host(addr):
     try:
         subprocess.check_call(
             [
-                'ping',
-                '-n',
-                '-q',  # no DNS, quiet output
-                '-c1',  # just need one response
-                '-w30',  # wait up to 30s
+                "ping",
+                "-n",
+                "-q",  # no DNS, quiet output
+                "-c1",  # just need one response
+                "-w30",  # wait up to 30s
                 addr,
             ],
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL)
+            stderr=subprocess.DEVNULL,
+        )
     except subprocess.CalledProcessError:
         return False
     return True
 
 
+def has_new_hardware():
+    output = subprocess.check_output(
+        ["i2cdetect", "-y", "1", hex(ATTINY_ADDRESS), hex(ATTINY_ADDRESS)],
+        universal_newlines=True,
+    )
+    return " -- " not in output
+
+
+def init_modem_power():
+    # Late import to simplify testing on developer machines.
+    from RPi import GPIO
+
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setup(MODEM_PIN, GPIO.OUT)
+    set_modem_power(True)
+
+
+def cycle_modem_power():
+    set_modem_power(False)
+    print("waiting...")
+    time.sleep(5)
+    set_modem_power(True)
+
+
+def set_modem_power(on):
+    from RPi import GPIO
+
+    print("powering modem " + "on" if on else "off")
+    GPIO.output(MODEM_PIN, GPIO.HIGH if on else GPIO.LOW)
+
+
 def reboot():
-    print('rebooting system')
+    print("rebooting system")
     subprocess.check_call(["/sbin/reboot"])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
