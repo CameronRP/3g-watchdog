@@ -131,8 +131,14 @@ def test_reboot(check_call):
 
 @pytest.fixture(autouse=True)
 def old_hardware(mocker):
-    m = mocker.patch.object(watchdog, "has_new_hardware", autospec=True)
+    m = mocker.patch.object(watchdog, "has_new_hardware")
     m.return_value = False
+
+
+@pytest.fixture(autouse=True)
+def is_modem_present(mocker):
+    m = mocker.patch.object(watchdog, "is_modem_present")
+    m.return_value = True
 
 
 @pytest.fixture(autouse=True)
