@@ -24,6 +24,7 @@ import subprocess
 import time
 
 MODEM_NETDEV = "usb0"
+MODEM_VENDOR_PRODUCT = "19d2:1405"
 
 TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
@@ -35,7 +36,9 @@ MODEM_PIN = 18
 def main():
     print("running")
 
-    if has_new_hardware():
+    new_hardware = has_new_hardware()
+
+    if new_hardware:
         print("newer hardware detected: will reset by cycling modem power")
         init_modem_power()
         reset = cycle_modem_power
@@ -44,6 +47,7 @@ def main():
         reset = reboot
 
     with contextlib.suppress(KeyboardInterrupt):
+        no_link_count = 0
         while running():
             time.sleep(TEST_INTERVAL_SECS)
 
@@ -52,8 +56,15 @@ def main():
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED")
                     reset()
+            elif is_modem_present():
+                if new_hardware:
+                    no_link_count += 1
+                    if no_link_count >= 3:
+                        print("modem detected, but no connection")
+                        reset()
+                        no_link_count = 0
             else:
-                print("link is not using USB modem")
+                print("USB modem not detected")
 
 
 def running():
@@ -105,6 +116,13 @@ def has_new_hardware():
         universal_newlines=True,
     )
     return " -- " not in output
+
+
+def is_modem_present():
+    exitcode = subprocess.call(
+        ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
+    )
+    return exitcode == 0
 
 
 def init_modem_power():
