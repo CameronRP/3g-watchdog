@@ -22,6 +22,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import contextlib
 import subprocess
 import time
+import yaml
 
 MODEM_NETDEV = "usb0"
 MODEM_VENDOR_PRODUCT = "19d2:1405"
@@ -30,18 +31,21 @@ TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
 
 ATTINY_ADDRESS = 0x04
-MODEM_PIN = 18
 
+def parse_config():
+    with open("/etc/cacophony/3g-watchdog.yaml", 'r') as stream:
+        config = yaml.load(stream)
+        return config
 
 def main():
     print("running")
-
+    config = parse_config()
     new_hardware = has_new_hardware()
 
     if new_hardware:
         print("newer hardware detected: will reset by cycling modem power")
-        init_modem_power()
-        reset = cycle_modem_power
+        init_modem_power(config['usb_power_pin'])
+        reset = get_cycle_modem_power(config['usb_power_pin'])
     else:
         print("older hardware detected: will reset by rebooting")
         reset = reboot
@@ -125,28 +129,29 @@ def is_modem_present():
     return exitcode == 0
 
 
-def init_modem_power():
+def init_modem_power(pin):
     # Late import to simplify testing on developer machines.
     from RPi import GPIO
 
     GPIO.setwarnings(False)
     GPIO.setmode(GPIO.BCM)
-    GPIO.setup(MODEM_PIN, GPIO.OUT)
-    set_modem_power(True)
+    GPIO.setup(pin, GPIO.OUT)
+    set_modem_power(True, pin)
 
 
-def cycle_modem_power():
-    set_modem_power(False)
-    print("waiting...")
-    time.sleep(5)
-    set_modem_power(True)
+def get_cycle_modem_power(pin):
+    def cycle_modem_power():
+        set_modem_power(False, pin)
+        print("waiting...")
+        time.sleep(5)
+        set_modem_power(True, pin)
+    return cycle_modem_power
 
-
-def set_modem_power(on):
+def set_modem_power(on, pin):
     from RPi import GPIO
 
     print("powering modem " + "on" if on else "off")
-    GPIO.output(MODEM_PIN, GPIO.HIGH if on else GPIO.LOW)
+    GPIO.output(pin, GPIO.HIGH if on else GPIO.LOW)
 
 
 def reboot():

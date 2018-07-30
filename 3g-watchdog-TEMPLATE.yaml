@@ -1,0 +1,5 @@
+# Rename this file to /etc/cacophony/3g-watchdog.yaml
+
+# The pin to control the power to the USB plug (3G modem)
+# 18 for old hardware, 22 for new
+usb_power_pin: 18
