@@ -22,6 +22,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import contextlib
 import subprocess
 import time
+import yaml
 
 MODEM_NETDEV = "usb0"
 MODEM_VENDOR_PRODUCT = "19d2:1405"
@@ -30,18 +31,51 @@ TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
 
 ATTINY_ADDRESS = 0x04
-MODEM_PIN = 18
 
+def parse_config():
+    with open("/etc/cacophony/3g-watchdog.yaml", 'r') as stream:
+        config = yaml.safe_load(stream)
+        return config
+
+class Modem:
+
+    def __init__(self, pin):
+        # Late import to simplify testing on developer machines.
+        from RPi import GPIO
+
+        self.power_pin = pin
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.power_pin, GPIO.OUT)
+        self.set_power(True)
+
+    def cycle_power(self):
+        self.set_power(False)
+        print("waiting...")
+        time.sleep(5)
+        self.set_power(True)
+
+    def set_power(self, on):
+        from RPi import GPIO
+
+        print("powering modem " + "on" if on else "off")
+        GPIO.output(self.power_pin, GPIO.HIGH if on else GPIO.LOW)
+
+    def is_present(self):
+        exitcode = subprocess.call(
+            ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
+        )
+        return exitcode == 0
 
 def main():
     print("running")
-
+    config = parse_config()
     new_hardware = has_new_hardware()
+    modem = Modem(config['usb_power_pin'])
 
     if new_hardware:
         print("newer hardware detected: will reset by cycling modem power")
-        init_modem_power()
-        reset = cycle_modem_power
+        reset = modem.cycle_power
     else:
         print("older hardware detected: will reset by rebooting")
         reset = reboot
@@ -56,7 +90,7 @@ def main():
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED")
                     reset()
-            elif is_modem_present():
+            elif modem.is_present():
                 if new_hardware:
                     no_link_count += 1
                     if no_link_count >= 3:
@@ -116,38 +150,6 @@ def has_new_hardware():
         universal_newlines=True,
     )
     return " -- " not in output
-
-
-def is_modem_present():
-    exitcode = subprocess.call(
-        ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
-    )
-    return exitcode == 0
-
-
-def init_modem_power():
-    # Late import to simplify testing on developer machines.
-    from RPi import GPIO
-
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(MODEM_PIN, GPIO.OUT)
-    set_modem_power(True)
-
-
-def cycle_modem_power():
-    set_modem_power(False)
-    print("waiting...")
-    time.sleep(5)
-    set_modem_power(True)
-
-
-def set_modem_power(on):
-    from RPi import GPIO
-
-    print("powering modem " + "on" if on else "off")
-    GPIO.output(MODEM_PIN, GPIO.HIGH if on else GPIO.LOW)
-
 
 def reboot():
     print("rebooting system")
