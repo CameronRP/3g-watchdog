@@ -144,6 +144,7 @@ def old_hardware(mocker):
 @pytest.fixture(autouse=True)
 def modem(mocker):
     m = mocker.patch.object(watchdog, "Modem")
+    m.NETDEV = "usb0"
     m.is_present.return_value = True
 
 
