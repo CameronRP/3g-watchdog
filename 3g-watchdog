@@ -34,18 +34,48 @@ ATTINY_ADDRESS = 0x04
 
 def parse_config():
     with open("/etc/cacophony/3g-watchdog.yaml", 'r') as stream:
-        config = yaml.load(stream)
+        config = yaml.safe_load(stream)
         return config
+
+class Modem:
+
+    def __init__(self, pin):
+        # Late import to simplify testing on developer machines.
+        from RPi import GPIO
+
+        self.power_pin = pin
+        GPIO.setwarnings(False)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setup(self.power_pin, GPIO.OUT)
+        self.set_power(True)
+
+    def cycle_power(self):
+        self.set_power(False)
+        print("waiting...")
+        time.sleep(5)
+        self.set_power(True)
+
+    def set_power(self, on):
+        from RPi import GPIO
+
+        print("powering modem " + "on" if on else "off")
+        GPIO.output(self.power_pin, GPIO.HIGH if on else GPIO.LOW)
+
+    def is_present(self):
+        exitcode = subprocess.call(
+            ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
+        )
+        return exitcode == 0
 
 def main():
     print("running")
     config = parse_config()
     new_hardware = has_new_hardware()
+    modem = Modem(config['usb_power_pin'])
 
     if new_hardware:
         print("newer hardware detected: will reset by cycling modem power")
-        init_modem_power(config['usb_power_pin'])
-        reset = get_cycle_modem_power(config['usb_power_pin'])
+        reset = modem.cycle_power
     else:
         print("older hardware detected: will reset by rebooting")
         reset = reboot
@@ -60,7 +90,7 @@ def main():
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED")
                     reset()
-            elif is_modem_present():
+            elif modem.is_present():
                 if new_hardware:
                     no_link_count += 1
                     if no_link_count >= 3:
@@ -120,39 +150,6 @@ def has_new_hardware():
         universal_newlines=True,
     )
     return " -- " not in output
-
-
-def is_modem_present():
-    exitcode = subprocess.call(
-        ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
-    )
-    return exitcode == 0
-
-
-def init_modem_power(pin):
-    # Late import to simplify testing on developer machines.
-    from RPi import GPIO
-
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(pin, GPIO.OUT)
-    set_modem_power(True, pin)
-
-
-def get_cycle_modem_power(pin):
-    def cycle_modem_power():
-        set_modem_power(False, pin)
-        print("waiting...")
-        time.sleep(5)
-        set_modem_power(True, pin)
-    return cycle_modem_power
-
-def set_modem_power(on, pin):
-    from RPi import GPIO
-
-    print("powering modem " + "on" if on else "off")
-    GPIO.output(pin, GPIO.HIGH if on else GPIO.LOW)
-
 
 def reboot():
     print("rebooting system")
