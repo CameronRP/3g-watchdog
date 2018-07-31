@@ -24,20 +24,19 @@ import subprocess
 import time
 import yaml
 
-MODEM_NETDEV = "usb0"
-MODEM_VENDOR_PRODUCT = "19d2:1405"
-
 TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
 
-ATTINY_ADDRESS = 0x04
 
 def parse_config():
-    with open("/etc/cacophony/3g-watchdog.yaml", 'r') as stream:
+    with open("/etc/cacophony/3g-watchdog.yaml", "r") as stream:
         config = yaml.safe_load(stream)
         return config
 
+
 class Modem:
+    NETDEV = "usb0"
+    VENDOR_PRODUCT = "19d2:1405"
 
     def __init__(self, pin):
         # Late import to simplify testing on developer machines.
@@ -61,20 +60,22 @@ class Modem:
         print("powering modem " + "on" if on else "off")
         GPIO.output(self.power_pin, GPIO.HIGH if on else GPIO.LOW)
 
-    def is_present(self):
+    @classmethod
+    def is_present(cls):
         exitcode = subprocess.call(
-            ["lsusb", "-d", MODEM_VENDOR_PRODUCT], stdout=subprocess.DEVNULL
+            ["lsusb", "-d", cls.VENDOR_PRODUCT], stdout=subprocess.DEVNULL
         )
         return exitcode == 0
+
 
 def main():
     print("running")
     config = parse_config()
     new_hardware = has_new_hardware()
-    modem = Modem(config['usb_power_pin'])
 
     if new_hardware:
         print("newer hardware detected: will reset by cycling modem power")
+        modem = Modem(config["usb_power_pin"])
         reset = modem.cycle_power
     else:
         print("older hardware detected: will reset by rebooting")
@@ -85,12 +86,12 @@ def main():
         while running():
             time.sleep(TEST_INTERVAL_SECS)
 
-            if is_defroute_via_dev(MODEM_NETDEV):
+            if is_defroute_via_dev(Modem.NETDEV):
                 print("link is using USB modem")
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED")
                     reset()
-            elif modem.is_present():
+            elif Modem.is_present():
                 if new_hardware:
                     no_link_count += 1
                     if no_link_count >= 3:
@@ -145,11 +146,32 @@ def ping_host(addr):
 
 
 def has_new_hardware():
-    output = subprocess.check_output(
-        ["i2cdetect", "-y", "1", hex(ATTINY_ADDRESS), hex(ATTINY_ADDRESS)],
-        universal_newlines=True,
-    )
-    return " -- " not in output
+    print("checking hardware...")
+    for _ in range(30):
+        try:
+            # For such a simple call, this is easier than depending on
+            # a Python D-Bus library.
+            output = subprocess.check_output(
+                [
+                    "dbus-send",
+                    "--system",
+                    "--print-reply=literal",
+                    "--dest=org.cacophony.ATtiny",
+                    "/org/cacophony/ATtiny",
+                    "org.cacophony.ATtiny.IsPresent",
+                ],
+                stderr=subprocess.STDOUT,
+            )
+        except subprocess.CalledProcessError as err:
+            last_error = err.output.decode("utf-8")
+            time.sleep(10)
+        else:
+            return b"true" in output
+
+    print("gave up talking to attiny-controller, assuming old hardware")
+    print("last error: " + last_error)
+    return False
+
 
 def reboot():
     print("rebooting system")

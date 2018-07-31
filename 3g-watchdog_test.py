@@ -130,15 +130,22 @@ def test_reboot(check_call):
 
 
 @pytest.fixture(autouse=True)
+def parse_config(mocker):
+    m = mocker.patch.object(watchdog, "parse_config")
+    m.return_value = {"usb_power_pin": 11}
+
+
+@pytest.fixture(autouse=True)
 def old_hardware(mocker):
     m = mocker.patch.object(watchdog, "has_new_hardware")
     m.return_value = False
 
 
 @pytest.fixture(autouse=True)
-def is_modem_present(mocker):
-    m = mocker.patch.object(watchdog, "is_modem_present")
-    m.return_value = True
+def modem(mocker):
+    m = mocker.patch.object(watchdog, "Modem")
+    m.NETDEV = "usb0"
+    m.is_present.return_value = True
 
 
 @pytest.fixture(autouse=True)
