@@ -27,6 +27,10 @@ import yaml
 TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
 
+DEVICES = [
+    {'name': 'spark_3G_modem', 'netdev': 'usb0', 'vendor_product': '19d2:1405'},
+    {'name': 'huawei_4G_modem', 'netdev': 'eth1', 'vendor_product': '12d1:14db'},
+]
 
 def parse_config():
     with open("/etc/cacophony/3g-watchdog.yaml", "r") as stream:
@@ -35,18 +39,36 @@ def parse_config():
 
 
 class Modem:
-    NETDEV = "usb0"
-    VENDOR_PRODUCT = "19d2:1405"
-
-    def __init__(self, pin):
+    def __init__(self, pin, new_hardware):
         # Late import to simplify testing on developer machines.
         from RPi import GPIO
 
         self.power_pin = pin
-        GPIO.setwarnings(False)
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setup(self.power_pin, GPIO.OUT)
-        self.set_power(True)
+        self.new_hardware = new_hardware
+        self.device_name = None
+
+        # Init power on modem
+        if self.new_hardware:
+            GPIO.setwarnings(False)
+            GPIO.setmode(GPIO.BCM)
+            GPIO.setup(self.power_pin, GPIO.OUT)
+            self.set_power(True)
+            time.sleep(TEST_INTERVAL_SECS)
+
+        # Find what modem is being used.
+        for device in DEVICES:
+            exitcode = subprocess.call(
+                ["lsusb", "-d", device['vendor_product']], stdout=subprocess.DEVNULL
+            )
+            if exitcode == 0:
+                self.device_name = device['name']
+                self.vendor_product = device['vendor_product']
+                self.netdev = device['netdev']
+                print('found device ' + self.device_name)
+                break
+        if not self.device_name:
+            print('could not find any modem device')
+            return
 
     def cycle_power(self):
         self.set_power(False)
@@ -60,47 +82,46 @@ class Modem:
         print("powering modem " + "on" if on else "off")
         GPIO.output(self.power_pin, GPIO.HIGH if on else GPIO.LOW)
 
-    @classmethod
-    def is_present(cls):
+    def is_present(self):
+        if not self.device_name:
+            return False
         exitcode = subprocess.call(
-            ["lsusb", "-d", cls.VENDOR_PRODUCT], stdout=subprocess.DEVNULL
+            ["lsusb", "-d", self.vendor_product], stdout=subprocess.DEVNULL
         )
         return exitcode == 0
 
+    def reset(self):
+        if self.new_hardware:
+            self.cycle_power()
+        else:
+            reboot()
 
 def main():
     print("running")
     config = parse_config()
     new_hardware = has_new_hardware()
 
-    if new_hardware:
-        print("newer hardware detected: will reset by cycling modem power")
-        modem = Modem(config["usb_power_pin"])
-        reset = modem.cycle_power
-    else:
-        print("older hardware detected: will reset by rebooting")
-        reset = reboot
-
     with contextlib.suppress(KeyboardInterrupt):
         no_link_count = 0
+        modem = Modem(config["usb_power_pin"], new_hardware)
         while running():
-            time.sleep(TEST_INTERVAL_SECS)
-
-            if is_defroute_via_dev(Modem.NETDEV):
+            if modem.is_present() and is_defroute_via_dev(modem.netdev):
                 print("link is using USB modem")
                 if not ping_hosts(TEST_HOSTS):
                     print("ping tests FAILED")
-                    reset()
-            elif Modem.is_present():
+                    modem.reset()
+                else:
+                    print("ping test PASSED")
+            elif modem.is_present():
                 if new_hardware:
                     no_link_count += 1
                     if no_link_count >= 3:
                         print("modem detected, but no connection")
-                        reset()
                         no_link_count = 0
+                        modem.reset()
             else:
-                print("USB modem not detected")
-
+                modem = Modem(config["usb_power_pin"], new_hardware)
+            time.sleep(TEST_INTERVAL_SECS)
 
 def running():
     "This exists to support patching during tests"

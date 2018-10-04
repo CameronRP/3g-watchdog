@@ -19,6 +19,7 @@ along with this program. If not, see <http://www.gnu.org/licenses/>.
 import subprocess
 import imp
 import pytest
+from unittest import mock
 
 # Importing like this is necessary to because the source file we're
 # testing starts with a number and doesn't have a .py extension.
@@ -52,7 +53,7 @@ def test_ping_ok(sleep, is_defroute_via_dev, ping_host, reboot):
     assert reboot.called is False
 
 
-def test_ping_fails(sleep, is_defroute_via_dev, ping_host, reboot):
+def test_ping_fails(sleep, is_defroute_via_dev, ping_host, modem):
     is_defroute_via_dev.return_value = True
     ping_host.return_value = False
 
@@ -61,7 +62,7 @@ def test_ping_fails(sleep, is_defroute_via_dev, ping_host, reboot):
     sleep.assert_called_once_with(300)
     is_defroute_via_dev.assert_called_once_with("usb0")
     assert ping_host.call_count == 2 * 5  # 2 hosts, 5 retries
-    reboot.assert_called_once_with()
+    modem.reset.assert_called_once_with()
 
 
 def test_some_pings_fail(sleep, is_defroute_via_dev, ping_host, reboot):
@@ -144,9 +145,11 @@ def old_hardware(mocker):
 @pytest.fixture(autouse=True)
 def modem(mocker):
     m = mocker.patch.object(watchdog, "Modem")
-    m.NETDEV = "usb0"
-    m.is_present.return_value = True
-
+    m.return_value = mock.Mock()
+    instance = m.return_value
+    instance.netdev = "usb0"
+    instance.is_present.return_value = True
+    return instance
 
 @pytest.fixture(autouse=True)
 def run_once(mocker):
