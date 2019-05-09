@@ -23,9 +23,12 @@ import contextlib
 import subprocess
 import time
 import yaml
+import sys
+from pydbus import SystemBus
 
 TEST_HOSTS = ["8.8.8.8", "8.8.4.4"]
 TEST_INTERVAL_SECS = 5 * 60
+TIME_ON_BATTERY = 30 * 60
 
 DEVICES = [
     {'name': 'spark_3G_modem', 'netdev': 'usb0', 'vendor_product': '19d2:1405'},
@@ -98,8 +101,11 @@ class Modem:
 
 def main():
     print("running")
+    start_time = time.time()
     config = parse_config()
     new_hardware = has_new_hardware()
+    on_battery = check_if_on_battery()
+    print("on battery: " + str(on_battery))
 
     with contextlib.suppress(KeyboardInterrupt):
         no_link_count = 0
@@ -121,6 +127,11 @@ def main():
                         modem.reset()
             else:
                 modem = Modem(config["usb_power_pin"], new_hardware)
+
+            if (on_battery and time.time() > start_time + TIME_ON_BATTERY):
+                print("turning off modem to save power on battery")
+                modem.set_power(False)
+                sys.exit(0)
             time.sleep(TEST_INTERVAL_SECS)
 
 def running():
@@ -198,6 +209,14 @@ def reboot():
     print("rebooting system")
     subprocess.check_call(["/sbin/reboot"])
 
+def check_if_on_battery():
+    try:
+        bus = SystemBus()
+        attiny = bus.get('org.cacophony.ATtiny', '/org/cacophony/ATtiny')
+        return attiny.OnBattery()
+    except Exception as e:
+        print(e)
+        return False
 
 if __name__ == "__main__":
     main()
