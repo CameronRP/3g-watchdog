@@ -104,8 +104,6 @@ def main():
     start_time = time.time()
     config = parse_config()
     new_hardware = has_new_hardware()
-    on_battery = check_if_on_battery()
-    print("on battery: " + str(on_battery))
 
     with contextlib.suppress(KeyboardInterrupt):
         no_link_count = 0
@@ -128,7 +126,7 @@ def main():
             else:
                 modem = Modem(config["usb_power_pin"], new_hardware)
 
-            if (on_battery and time.time() > start_time + TIME_ON_BATTERY):
+            if (check_if_on_battery() and time.time() > start_time + TIME_ON_BATTERY):
                 print("turning off modem to save power on battery")
                 modem.set_power(False)
                 sys.exit(0)
